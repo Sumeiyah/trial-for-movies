@@ -19,7 +19,21 @@ db.init_app(app)
 def register():
     # User registration route
     data = request.get_json()
-    new_user = User(Username=data['username'], Password=data['password'], Email=data['email'])
+
+    # Default values
+    default_profile_pic = 'https://i.stack.imgur.com/34AD2.jpg'
+    default_bio = "Hey there i'm a New flick-feeds User!"
+    
+    # Note: It's okay to leave ContactDetails as null if you don't want a default for it
+
+    new_user = User(
+        Username=data['username'],
+        Password=data['password'],
+        Email=data['email'],
+        ProfilePicture=default_profile_pic,
+        Bio=default_bio
+    )
+
     db.session.add(new_user)
     db.session.commit()
     return jsonify({'message': 'Registration Successful!'}), 201
