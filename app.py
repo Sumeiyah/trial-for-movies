@@ -37,28 +37,6 @@ def login():
     
     return jsonify({'message': 'Invalid Credentials!'}), 401
 
-@app.route('/get_user_by_credentials', methods=['POST'])
-def get_user_by_credentials():
-    data = request.get_json()
-    username = data['username']
-    
-    # Try to find the user by username and password
-    user = User.query.filter_by(Username=username).first()
-
-    if user:
-        # Create a dictionary with user information (excluding password)
-        user_info = {
-            'UserID': user.UserID,
-            'Username': user.Username,
-            'Email': user.Email,
-            'ProfilePicture': user.ProfilePicture,
-            'Bio': user.Bio
-            # Add other user attributes as needed
-        }
-
-        return jsonify(user_info), 200
-    else:
-        return jsonify({'message': 'User not found!'}), 404
 
 @app.route('/profile/<int:user_id>', methods=['GET'])
 def profile(user_id):
@@ -75,6 +53,23 @@ def profile(user_id):
             # Add other user attributes as needed
         }), 200
     return jsonify({'message': 'User not found!'}), 404
+
+@app.route('/profile/<string:username>', methods=['GET'])
+def profile_by_username(username):
+    # View user profile by username route
+    user = User.query.filter_by(Username=username).first()
+    if user:
+        return jsonify({
+            'UserID': user.UserID,
+            'Username': user.Username,
+            'Email': user.Email,
+            'ProfilePicture': user.ProfilePicture,
+            'Bio': user.Bio,
+            'ContactDetails': user.ContactDetails
+            # Add other user attributes as needed
+        }), 200
+    return jsonify({'message': 'User not found!'}), 404
+
 
 @app.route('/update_profile/<int:user_id>', methods=['PUT'])
 def update_profile(user_id):
