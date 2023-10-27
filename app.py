@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from Models import *
 from flask_cors import CORS
+from sqlalchemy import func
 from sqlalchemy.orm.exc import NoResultFound
 from flask_migrate import Migrate
 
@@ -101,14 +102,38 @@ def update_profile(user_id):
 def post_movie():
     # Post a watched movie route
     user = User.query.filter_by(Username=session['username']).first()
-    if user:
-        data = request.get_json()
-        movie = Movie(Title=data['movie_title'])  # Add other attributes...
-        db.session.add(movie)
-        post = Post(author=user, movie=movie)  # Add other post attributes...
-        db.session.add(post)
-        db.session.commit()
-        return jsonify({'message': 'Movie posted successfully!'}), 201
+    if not user:
+        return jsonify({'message': 'User not found or not logged in!'}), 401
+
+    data = request.get_json()
+
+    # Check for required fields
+    required_fields = ['movie_title', 'Review', 'Rating', 'ImagePath']
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({'message': f'Missing {field}'}), 400
+
+    movie_title = data['movie_title']
+    review = data['Review']
+    rating = data['Rating']
+    image_path = data['ImagePath'] if data['ImagePath'] else "https://w7.pngwing.com/pngs/116/765/png-transparent-clapperboard-computer-icons-film-movie-poster-angle-text-logo-thumbnail.png"
+
+    movie = Movie(Title=movie_title)
+    db.session.add(movie)
+    db.session.flush()  # To get the generated MovieID for the new movie, if required.
+
+    post = Post(
+        UserID=user.UserID,
+        MovieID=movie.MovieID, 
+        Review=review, 
+        Rating=rating,
+        ImagePath=image_path
+    )
+    db.session.add(post)
+    db.session.commit()
+
+    return jsonify({'message': 'Movie posted successfully!'}), 201
+
 
 @app.route('/get_movies', methods=['GET'])
 def get_movies():
@@ -130,38 +155,37 @@ def get_movies():
 
     return jsonify({'movies': movie_list}), 200
 
-@app.route('/get_user_movies/<int:user_id>', methods=['GET'])
-def get_user_movies(user_id):
-    # Get watched movies of a specific user route
-    user = User.query.get(user_id)
-    if user:
-        watched_movies = WatchedMovie.query.filter_by(UserID=user.UserID).all()
-        movie_list = []
-        for watched_movie in watched_movies:
-            movie = Movie.query.get(watched_movie.MovieID)
-            if movie:
-                movie_data = {
-                    'MovieID': movie.MovieID,
-                    'Title': movie.Title,
-                    'ImagePath': movie.ImagePath
-                }
-                movie_list.append(movie_data)
-        return jsonify({'movies': movie_list}), 200
-    return jsonify({'message': 'User not found!'}), 404
-
+# Track a Watched Movie
 @app.route('/add_watched_movie', methods=['POST'])
+def track_movie():
+    # Track a watched movie route
+    user = User.query.filter_by(Username=session['username']).first()
+    if user:
+        data = request.get_json()
+        movie = Movie.query.get(data['movie_id'])  # Query the Movie entity by movie_id
+        if not movie:
+            return jsonify({'message': 'Movie not found!'}), 404
+        # Use the image path from the queried movie
+        image_path = movie.ImagePath
+        watched_movie = WatchedMovie(UserID=user.UserID, MovieID=data['movie_id'], ImagePath=image_path)
+        db.session.add(watched_movie)
+        db.session.commit()
+        return jsonify({'message': 'Movie added to watched movies successfully!'}), 200
+
+
+@app.route('/post_watched_movie', methods=['POST'])
 def add_watched_movie():
     # Add a watched movie as a post route
     if 'username' not in session:
         return jsonify({'message': 'You must be logged in to add watched movies as posts!'}), 401
 
-    user = User.query.filter_by(Username=session['username']).first()
-    if not user:
-        return jsonify({'message': 'User not found!'}), 404
+    current_user = User.query.filter_by(Username=session['username']).first()
+    if not current_user:
+        return jsonify({'message': 'Current user not found!'}), 404
 
-    # Ask for user input for movie_id and user_id
-    movie_id = input('Enter Movie ID: ')
-    user_id = input('Enter User ID: ')
+    data = request.get_json()
+    movie_id = data.get('movie_id')
+    user_id = data.get('user_id')
 
     # Check if the movie and user exist
     movie = Movie.query.get(movie_id)
@@ -189,20 +213,8 @@ def add_watched_movie():
     db.session.add(post)
     db.session.commit()
 
-    return "Post added successfully", 200
+    return jsonify({'message': 'Post added successfully'}), 200
 
-
-# Track a Watched Movie
-@app.route('/track_movie', methods=['POST'])
-def track_movie():
-    # Track a watched movie route
-    user = User.query.filter_by(Username=session['username']).first()
-    if user:
-        data = request.get_json()
-        watched_movie = WatchedMovie(UserID=user.UserID, MovieID=data['movie_id'])
-        db.session.add(watched_movie)
-        db.session.commit()
-        return jsonify({'message': 'Movie tracked successfully!'}), 200
 
 @app.route('/watched_movies/<int:user_id>', methods=['GET'])
 def get_watched_movies(user_id):
@@ -254,19 +266,21 @@ def get_all_clubs():
 def create_club():
     # Create a movie club route
     user = User.query.filter_by(Username=session['username']).first()
-    if user:
-        data_list = request.get_json()
-        response_data = []
-        
-        for data in data_list:
-            club = Club(Name=data['club_name'], Genre=data['genre'], OwnerID=data['owner_id'])
-            db.session.add(club)
-            response_data.append({'message': f'Club "{data["club_name"]}" created successfully!'})
-        
-        db.session.commit()
-        return jsonify(response_data), 201
-    else:
+    if not user:
         return jsonify({'message': 'User not found!'}), 404
+
+    data = request.get_json()
+    
+    # Check if the data is a dictionary
+    if not isinstance(data, dict):
+        return jsonify({'message': 'Invalid data format!'}), 400
+    
+    club = Club(Name=data['club_name'], Genre=data['genre'], OwnerID=data['owner_id'])
+    db.session.add(club)
+    db.session.commit()
+
+    return jsonify({'message': f'Club "{data["club_name"]}" created successfully!'}), 201
+
 
 @app.route('/join_clubs_by_genre/<string:genre>', methods=['POST'])
 def join_clubs_by_genre(genre):
@@ -590,6 +604,34 @@ def unfollow_user(followee_id):
             db.session.delete(follow)
             db.session.commit()
             return jsonify({'message': 'Unfollowed user successfully!'}), 200
+        
+@app.route('/followers/<string:username>', methods=['GET'])
+def user_followers(username):
+    # Fetch the user by the provided username
+    user = User.query.filter_by(Username=username).first()
+    if not user:
+        return jsonify({'message': 'User not found!'}), 404
+
+    # Count the number of followers the user has
+    followers_count = db.session.query(func.count(Follow.FollowerID)).filter(Follow.FolloweeID == user.UserID).scalar()
+    
+    return jsonify({'followers_count': followers_count}), 200
+
+
+from sqlalchemy import func
+
+@app.route('/following/<string:username>', methods=['GET'])
+def user_following(username):
+    # Fetch the user by the provided username
+    user = User.query.filter_by(Username=username).first()
+    if not user:
+        return jsonify({'message': 'User not found!'}), 404
+
+    # Count the number of users the main user is following
+    following_count = db.session.query(func.count(Follow.FolloweeID)).filter(Follow.FollowerID == user.UserID).scalar()
+    
+    return jsonify({'following_count': following_count}), 200
+
 
 
 
