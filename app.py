@@ -135,7 +135,7 @@ def post_movie():
     return jsonify({'message': 'Movie posted successfully!'}), 201
 
 
-@app.route('/get_movies', methods=['GET'])
+@app.route('movies', methods=['GET'])
 def get_movies():
     # Get all movies route
     movies = Movie.query.all()
@@ -318,7 +318,7 @@ def join_club(club_id):
 
 # Posts and Interactions
 
-@app.route('/get_posts', methods=['GET'])
+@app.route('/posts', methods=['GET'])
 def get_posts():
     # Get all posts route
     posts = Post.query.all()
